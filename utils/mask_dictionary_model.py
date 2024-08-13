@@ -5,6 +5,9 @@ import copy
 import os
 import cv2
 from dataclasses import dataclass, field
+from PIL import Image
+from utils.config import Config
+from utils.common_utils import CommonUtils
 
 @dataclass
 class MaskDictionatyModel:
@@ -17,7 +20,13 @@ class MaskDictionatyModel:
     def add_new_frame_annotation(self, mask_list, box_list, label_list, background_value = 0):
         mask_img = torch.zeros(mask_list.shape[-2:])
         anno_2d = {}
-        for idx, (mask, box, label) in enumerate(zip(mask_list, box_list, label_list)):
+        removed_ids = self.filter_overlay_masks_ids(mask_list)
+        print("filtered_label_list", label_list)
+        filtered_mask_list = [mask_list[i] for i in range(len(mask_list)) if i not in removed_ids]
+        filtered_box_list = [box_list[i] for i in range(len(box_list)) if i not in removed_ids]
+        filtered_label_list = [label_list[i] for i in range(len(label_list)) if i not in removed_ids]
+        print("filtered_label_list", filtered_label_list)
+        for idx, (mask, box, label) in enumerate(zip(filtered_mask_list, filtered_box_list, filtered_label_list)):
             final_index = background_value + idx + 1
 
             if mask.shape[0] != mask_img.shape[0] or mask.shape[1] != mask_img.shape[1]:
@@ -25,47 +34,71 @@ class MaskDictionatyModel:
             # mask = mask
             mask_img[mask == True] = final_index
             # print("label", label)
-            name = label
+            label_name_group = label.split("(")[0]
+            if " " in label_name_group:
+                name = label_name_group.split(" ")[0]  # label 
+            else:
+                name = label_name_group
+            logit = label.split("(")[1].replace(")", "")
             box = box # .numpy().tolist()
-            new_annotation = ObjectInfo(instance_id = final_index, mask = mask, class_name = name, x1 = box[0], y1 = box[1], x2 = box[2], y2 = box[3])
-            anno_2d[final_index] = new_annotation
+            true_count = mask.sum().item()
+            if box[3] < 1070 and true_count > Config.mask_smallest_threshold:
+                new_annotation = ObjectInfo(instance_id = final_index, mask = mask, class_name = name, x1 = box[0], y1 = box[1], x2 = box[2], y2 = box[3], logit = logit)
+                anno_2d[final_index] = new_annotation
 
         # np.save(os.path.join(output_dir, output_file_name), mask_img.numpy().astype(np.uint16))
         self.mask_height = mask_img.shape[0]
         self.mask_width = mask_img.shape[1]
         self.labels = anno_2d
 
-    def update_masks(self, tracking_annotation_dict, iou_threshold=0.8, objects_count=0):
-        updated_masks = {}
+    def filter_overlay_masks_ids(self, mask_list):
+        removed_ids = []
+        for mask_id in range(len(mask_list)):
+            mask_img = mask_list[mask_id]
+            for mask_id_2 in range(mask_id+1, len(mask_list)):
+                mask_img_2 = mask_list[mask_id_2]
+                iou_on_smaller, smaller_mask = self.calculate_mask_overlay(mask_img, mask_img_2)
+                if iou_on_smaller > Config.mask_overlay_threshold:
+                    removed_ids.append(mask_id)
+        print("filter_overlay_masks_return_keep_ids", removed_ids)
+        return removed_ids
 
-        for seg_obj_id, seg_mask in self.labels.items():  # tracking_masks
+
+    def update_masks(self, tracking_annotation_dict, objects_count=0):
+        tracking_annotation_dict.clean_zero_mask()
+        updated_masks = copy.deepcopy(tracking_annotation_dict.labels)   # seg masks
+        removed_keys = []
+        
+        for seg_id, seg_info in self.labels.items():  # tracking_masks
             flag = 0 
-            new_mask_copy = ObjectInfo()
-            if seg_mask.mask.sum() == 0:
+            new_object_copy = copy.deepcopy(seg_info)
+            true_count = seg_info.mask.sum().item()
+            if true_count < Config.mask_smallest_threshold:
+                # removed_keys.append(seg_id)
                 continue
-            
-            for object_id, object_info in tracking_annotation_dict.labels.items():  # grounded_sam masks
-                iou = self.calculate_iou(seg_mask.mask, object_info.mask)  # tensor, numpy
+            for track_obj_id, track_object in tracking_annotation_dict.labels.items():  # grounded_sam masks
+                iou, smaller_mask = self.calculate_mask_overlay(track_object.mask, seg_info.mask)  # tensor, numpy
                 # print("iou", iou)
-                if iou > iou_threshold:
-                    flag = object_info.instance_id
-                    new_mask_copy.mask = seg_mask.mask
-                    new_mask_copy.instance_id = object_info.instance_id
-                    new_mask_copy.class_name = seg_mask.class_name
+                if iou > Config.mask_overlay_threshold:
+                    flag = track_object.instance_id
+                    new_object_copy.instance_id = track_object.instance_id
+                    new_object_copy.mask = seg_info.mask
+                    updated_masks[track_obj_id] = new_object_copy
                     break
                 
             if not flag:
                 objects_count += 1
                 flag = objects_count
-                new_mask_copy.instance_id = objects_count
-                new_mask_copy.mask = seg_mask.mask
-                new_mask_copy.class_name = seg_mask.class_name
-            updated_masks[flag] = new_mask_copy
+                new_object_copy.instance_id = objects_count
+                updated_masks[objects_count] = new_object_copy
+
+        updated_masks = {k: v for k, v in updated_masks.items() if k not in removed_keys}
         self.labels = updated_masks
+        print("updated_masks.keys()", updated_masks.keys())
         return objects_count
 
-    def get_target_class_name(self, instance_id):
-        return self.labels[instance_id].class_name
+    def get_target_class_name_and_logit(self, instance_id):
+        return self.labels[instance_id].class_name, self.labels[instance_id].logit
 
 
     @staticmethod
@@ -82,15 +115,70 @@ class MaskDictionatyModel:
         iou = intersection / union
         return iou
 
+    @staticmethod
+    def calculate_mask_overlay(mask1, mask2):
+        # Convert masks to float tensors for calculations
+        mask1 = mask1 #.to(torch.float32)
+        mask2 = mask2 # .to(torch.float32)
+        
+        # Calculate intersection and areas
+        intersection = (mask1 * mask2).sum()
+        area1 = mask1.sum()
+        area2 = mask2.sum()
+        
+        # Find the smaller and larger mask areas
+        min_area = min(area1, area2)
+        
+        # Determine which mask is larger
+        smaller_mask = mask1 if area1 == min_area else mask2
+        
+        # Calculate the intersection ratio relative to the smaller mask
+        intersection_ratio = intersection / min_area
+        
+        return intersection_ratio, smaller_mask
+
+
     def to_dict(self):
         return {
             "mask_name": self.mask_name,
             "mask_height": self.mask_height,
             "mask_width": self.mask_width,
             "promote_type": self.promote_type,
-            "labels": {k: v.to_dict() for k, v in self.labels.items()}
+            "labels": [ value.to_dict() for value in self.labels.values()] # {k: v.to_dict() for k, v in self.labels.items()}
         }
 
+    def clean_zero_mask(self, area_threshold=Config.mask_smallest_threshold):
+        removed_keys = []
+        for key, value in self.labels.items():
+            if value.mask.sum() < area_threshold:
+                removed_keys.append(key)
+        for key in removed_keys:
+            self.labels.pop(key)
+
+    def save_empty_mask_and_json(self, mask_data_dir, json_data_dir, image_name_list=None):
+        mask_img = torch.zeros((self.mask_height, self.mask_width))
+        if image_name_list:
+            for image_base_name in image_name_list:
+                image_base_name = image_base_name.replace(".png", ".npy")
+                mask_name = "mask_"+image_base_name
+                np.save(os.path.join(mask_data_dir, mask_name), mask_img.numpy().astype(np.uint16))
+
+                json_data = self.to_dict()
+                json_data_path = os.path.join(json_data_dir, mask_name.replace(".npy", ".json"))
+                print("save_empty_mask_and_json", json_data_path)
+                with open(json_data_path, "w") as f:
+                    json.dump(json_data, f)
+                del mask_img, json_data
+        else:
+            mask_img = torch.zeros((self.mask_height, self.mask_width))
+            np.save(os.path.join(mask_data_dir, self.mask_name), mask_img.numpy().astype(np.uint16))
+
+            json_data = self.to_dict()
+            json_data_path = os.path.join(json_data_dir, self.mask_name.replace(".npy", ".json"))
+            print("save_empty_mask_and_json", json_data_path)
+            with open(json_data_path, "w") as f:
+                json.dump(json_data, f)
+            del mask_img, json_data
 
 
 @dataclass
