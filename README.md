@@ -15,11 +15,11 @@ Grounded SAM 2 does not introduce significant methodological changes compared to
 ## News
 
 - `2024/08/09`: Support **Ground and Track New Object** throughout the whole videos. This feature is still under development now. Credits to [Shuo Shen](https://github.com/ShuoShenDe).
-- `2024/08/07`: Support custom video inputs, users need only submit their video file (e.g. mp4 file) with specific text prompts to get an impressive demo videos.
+- `2024/08/07`: Support **Custom Video Inputs**, users need only submit their video file (e.g. mp4 file) with specific text prompts to get an impressive demo videos.
 
 ## Contents
 - [Installation](#installation)
-- [Grounded SAM 2 Demo](#grounded-sam-2-demos)
+- [Grounded SAM 2 Demos](#grounded-sam-2-demos)
   - [Grounded SAM 2 Image Demo](#grounded-sam-2-image-demo-with-grounding-dino)
   - [Grounded SAM 2 Image Demo (with Grounding DINO 1.5 & 1.6)](#grounded-sam-2-image-demo-with-grounding-dino-15--16)
   - [Grounded SAM 2 Video Object Tracking Demo](#grounded-sam-2-video-object-tracking-demo)
@@ -27,6 +27,8 @@ Grounded SAM 2 does not introduce significant methodological changes compared to
   - [Grounded SAM 2 Video Object Tracking with Custom Video Input (using Grounding DINO)](#grounded-sam-2-video-object-tracking-demo-with-custom-video-input-with-grounding-dino)
   - [Grounded SAM 2 Video Object Tracking with Custom Video Input (using Grounding DINO 1.5 & 1.6)](#grounded-sam-2-video-object-tracking-demo-with-custom-video-input-with-grounding-dino-15--16)
   - [Grounded SAM 2 Video Object Tracking with Continues ID (using Grounding DINO)](#grounded-sam-2-video-object-tracking-with-continuous-id-with-grounding-dino)
+- [Grounded SAM 2 Florence-2 Demos](#grounded-sam-2-florence-2-demos)
+  - [Grounded SAM 2 Florence-2 Image Demo](#grounded-sam-2-florence-2-image-demo)
 - [Citation](#citation)
 
 
@@ -143,7 +145,7 @@ We've supported different types of prompt for Grounded SAM 2 tracking demo:
 - **Box Prompt**: We directly use the box outputs from Grounding DINO as box prompts for SAM 2 video predictor
 - **Mask Prompt**: We use the SAM 2 mask prediction results based on Grounding DINO box outputs as mask prompt for SAM 2 video predictor.
 
-![Grounded SAM 2 Tracking Pipeline](./assets/g_sam2_tracking_pipeline_vis.png)
+![Grounded SAM 2 Tracking Pipeline](./assets/g_sam2_tracking_pipeline_vis_new.png)
 
 
 ### Grounded SAM 2 Video Object Tracking Demo (with Grounding DINO 1.5 & 1.6)
@@ -220,6 +222,11 @@ If you want to try `Grounding DINO 1.5` model, you can run the following scripts
 ```bash
 python grounded_sam2_tracking_demo_with_continuous_id_gd1.5.py
 ```
+
+## Grounded SAM 2 Florence-2 Demos
+### Grounded SAM 2 Florence-2 Image Demo
+
+In this section, we will explore how to integrate the feature-rich and robust open-source models [Florence-2](https://arxiv.org/abs/2311.06242) and SAM 2 to develop practical applications.
 
 ### Citation
 
