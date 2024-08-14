@@ -1,10 +1,13 @@
 import os
 import json
+import shutil
 import cv2
 import numpy as np
 from dataclasses import dataclass
 import supervision as sv
 import random
+
+import torch
 
 class CommonUtils:
     @staticmethod
@@ -15,11 +18,11 @@ class CommonUtils:
         :param path: The directory path to check or create.
         """
         try: 
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
-                print(f"Path '{path}' did not exist and has been created.")
-            else:
-                print(f"Path '{path}' already exists.")
+            if os.path.exists(path):
+                shutil.rmtree(path)
+                print(f"Path '{path}' did exist and has been removed.")
+            os.makedirs(path, exist_ok=True)
+            # print(f"Path '{path}' did not exist and has been created.")
         except Exception as e:
             print(f"An error occurred while creating the path: {e}")
 
@@ -159,3 +162,48 @@ class CommonUtils:
     def random_color():
         """random color generator"""
         return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
+    def setup_environment(device="cuda"):
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+        if torch.cuda.get_device_properties(0).major >= 8:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
+    def merge_mask_and_json(video_dict, mask_data_dir, json_data_dir, device="cuda"):
+        for frame_idx, frame_masks_info in video_dict.items():
+            mask = frame_masks_info.labels
+            if os.path.exists(os.path.join(mask_data_dir, frame_masks_info.mask_name)):
+                mask_img = np.load(os.path.join(mask_data_dir, frame_masks_info.mask_name))
+                mask_img = torch.from_numpy(mask_img).to(device).to(torch.int16)
+            else:
+                mask_img = torch.zeros(frame_masks_info.mask_height, frame_masks_info.mask_width)
+
+            for obj_id, obj_info in mask.items():
+                mask_img[obj_info.mask == True] = obj_id
+
+            mask_img = mask_img.cpu().numpy().astype(np.uint16)
+            np.save(os.path.join(mask_data_dir, frame_masks_info.mask_name), mask_img)
+            json_path = os.path.join(json_data_dir, frame_masks_info.mask_name.replace(".npy", ".json"))
+            if os.path.exists(json_path):
+                with open(json_path, "r") as f:
+                    json_data = json.load(f)
+                    new_labels = frame_masks_info.to_dict().get("labels")
+                    json_data["labels"].update(new_labels)
+            else:
+                json_data = frame_masks_info.to_dict()
+            
+            json_data_path = os.path.join(json_data_dir, frame_masks_info.mask_name.replace(".npy", ".json"))
+            with open(json_data_path, "w") as f:
+                json.dump(json_data, f)
+
+    def read_mask_and_json(mask_data_dir, json_data_dir, image_base_name, device="cuda"):
+        # Load the mask
+        mask_path = os.path.join(mask_data_dir, "mask_"+image_base_name+".npy")
+        mask_img = np.load(mask_path)
+        mask_tensor = torch.from_numpy(mask_img).to(device)
+        # Load the corresponding JSON data
+        json_data_path = os.path.join(json_data_dir, "mask_"+image_base_name+".json")
+        with open(json_data_path, "r") as f:
+            json_data = json.load(f)
+        
+        return mask_tensor, json_data

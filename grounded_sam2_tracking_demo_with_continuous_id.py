@@ -159,7 +159,8 @@ for start_frame_idx in range(0, len(frame_names), step):
         
         for i, out_obj_id in enumerate(out_obj_ids):
             out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
-            object_info = ObjectInfo(instance_id = out_obj_id, mask = out_mask[0], class_name = mask_dict.get_target_class_name(out_obj_id))
+            class_name, logit = mask_dict.get_target_class_name_and_logit(out_obj_id)
+            object_info = ObjectInfo(instance_id = out_obj_id, mask = out_mask[0], class_name = class_name, logit=logit)
             object_info.update_box()
             frame_masks.labels[out_obj_id] = object_info
             image_base_name = frame_names[out_frame_idx].split(".")[0]
