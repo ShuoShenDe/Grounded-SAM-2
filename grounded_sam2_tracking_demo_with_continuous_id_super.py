@@ -11,7 +11,7 @@ from utils.grounding_sam2_model import GroundingSAM2Model
 from utils.track_utils import sample_points_from_masks
 from utils.video_utils import create_video_from_images
 from utils.common_utils import CommonUtils
-from utils.mask_dictionary_model import MaskDictionatyModel, ObjectInfo
+from utils.mask_dictionary_model import MaskDictionaryModel, ObjectInfo
 import json
 import time
 
@@ -34,18 +34,17 @@ model_id = "IDEA-Research/grounding-dino-tiny"
 # VERY important: text queries need to be lowercased + end with a dot
 text = "car."
 # `video_dir` a directory of JPEG frames with filenames like `<frame_index>.jpg`  
-video_dir = "notebooks/videos/car"
+video_dir = "/media/NAS/sd_nas_01/shuo/denso_data/20240613_103919_9_short/raw_data"
 # 'output_dir' is the directory to save the annotated frames
-output_dir = "./outputs"
+output_dir = "/media/NAS/sd_nas_01/shuo/denso_data/20240613_103919_9_short/"
 # 'output_video_path' is the path to save the final video
 output_video_path = "./outputs/output.mp4"
 
 PROMPT_TYPE_FOR_VIDEO = "mask" # box, mask or point
 objects_count = 0
-
+step = 1
 
 # create the output directory
-CommonUtils.creat_dirs(output_dir)
 mask_data_dir = os.path.join(output_dir, "mask_data")
 json_data_dir = os.path.join(output_dir, "json_data")
 result_dir = os.path.join(output_dir, "result")
@@ -54,7 +53,7 @@ CommonUtils.creat_dirs(json_data_dir)
 # scan all the JPEG frame names in this directory
 frame_names = [
     p for p in os.listdir(video_dir)
-    if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+    if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG", ".png"]
 ]
 frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
 CommonUtils.setup_environment(device)
@@ -71,12 +70,13 @@ Step 2: Start first tracking and generate masks for the first frame
 start_frame_idx = 0
 grounding_sam2_model = GroundingSAM2Model(grounding_model_id = model_id, sam2_checkpoint = sam2_checkpoint, model_cfg = model_cfg, device = device)
 img_path = os.path.join(video_dir, frame_names[start_frame_idx])
-image = Image.open(img_path)
+image = Image.open(img_path).convert("RGB")
+
 image_base_name = frame_names[start_frame_idx].split(".")[0]
 # segment first frame
 masks, boxes, labels, scores = grounding_sam2_model.forward(image, text, box_threshold=0.25, text_threshold=0.25)
 print(labels)
-first_frame = MaskDictionatyModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
+first_frame = MaskDictionaryModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
 if first_frame.promote_type == "mask":
     first_frame.add_new_frame_annotation(mask_list=torch.tensor(masks).to(device), box_list=torch.tensor(boxes), label_list=labels, score_list=scores)
 else:
@@ -97,7 +97,7 @@ if len(first_frame.labels) != 0:
         
     for out_frame_idx, out_obj_ids, out_mask_logits in video_predictor.propagate_in_video(inference_state, start_frame_idx=start_frame_idx):
         image_base_name = frame_names[out_frame_idx].split(".")[0]
-        frame_masks = MaskDictionatyModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
+        frame_masks = MaskDictionaryModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
         
         for i, out_obj_id in enumerate(out_obj_ids):
             out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
@@ -123,14 +123,14 @@ else:
 
     
 
-for start_frame_idx in range(1, len(frame_names)):
+for start_frame_idx in range(1, len(frame_names), step):
     print("continue tracking for frame {}".format(start_frame_idx))
     img_path = os.path.join(video_dir, frame_names[start_frame_idx])
-    image = Image.open(img_path)
+    image = Image.open(img_path).convert("RGB")
     image_base_name = frame_names[start_frame_idx].split(".")[0]
     masks, boxes, labels, scores = grounding_sam2_model.forward(image, text, box_threshold=0.25, text_threshold=0.25)
     print("new segment frame", len(masks))
-    new_seg_mask_dict = MaskDictionatyModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
+    new_seg_mask_dict = MaskDictionaryModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
 
     if new_seg_mask_dict.promote_type == "mask":
         new_seg_mask_dict.add_new_frame_annotation(mask_list=torch.tensor(masks).to(device), box_list=torch.tensor(boxes), label_list=labels)
@@ -158,7 +158,7 @@ for start_frame_idx in range(1, len(frame_names)):
     for out_frame_idx, out_obj_ids, out_mask_logits in video_predictor.propagate_in_video(inference_state, start_frame_idx=start_frame_idx):
         image_base_name = frame_names[out_frame_idx].split(".")[0]
         json_file = os.path.join(json_data_dir, f"mask_{image_base_name}.json")
-        previous_predicted_frame = MaskDictionatyModel().from_json(json_file)
+        previous_predicted_frame = MaskDictionaryModel().from_json(json_file)
 
         for i, out_obj_id in enumerate(out_obj_ids):
             out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
@@ -172,4 +172,4 @@ for start_frame_idx in range(1, len(frame_names)):
 print("Total time taken: ", time.time() - start_time)
 CommonUtils.draw_masks_and_box_with_supervision(video_dir, mask_data_dir, json_data_dir, result_dir)
 
-create_video_from_images(result_dir, output_video_path, frame_rate=30)
+# create_video_from_images(result_dir, output_video_path, frame_rate=30)

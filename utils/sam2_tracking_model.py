@@ -1,7 +1,7 @@
 import os
 from sam2.build_sam import build_sam2_video_predictor
 from utils.common_utils import CommonUtils
-from utils.mask_dictionary_model import MaskDictionatyModel, ObjectInfo
+from utils.mask_dictionary_model import MaskDictionaryModel, ObjectInfo
 
 
 class SAM2TrackingModel:
@@ -27,7 +27,7 @@ class SAM2TrackingModel:
             image_base_name = frame_names[out_frame_idx].split(".")[0]
             json_file = os.path.join(self.json_data_dir, f"mask_{image_base_name}.json")
             if os.path.exists(json_file):
-                tracking_frame_mask = MaskDictionatyModel().from_json(json_file)
+                tracking_frame_mask = MaskDictionaryModel().from_json(json_file)
 
                 for i, out_obj_id in enumerate(out_obj_ids):
                     out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
@@ -35,19 +35,17 @@ class SAM2TrackingModel:
                     object_info = ObjectInfo(instance_id = out_obj_id, mask = out_mask[0], class_name = class_name, logit = logit)
                     object_info.update_box()
                     tracking_frame_mask.labels[out_obj_id] = object_info
-
             else:
-                tracking_frame_mask = MaskDictionatyModel(promote_type = self.prompt_type, mask_name = f"mask_{image_base_name}.npy")
+                tracking_frame_mask = MaskDictionaryModel(promote_type = self.prompt_type, mask_name = f"mask_{image_base_name}.npy")
                 for i, out_obj_id in enumerate(out_obj_ids):
                     out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
                     class_name, logit = frame_dict.get_target_class_name_and_logit(out_obj_id)
                     object_info = ObjectInfo(instance_id = out_obj_id, mask = out_mask[0], class_name = class_name, logit=logit)
                     object_info.update_box()
+                    tracking_frame_mask.labels[out_obj_id] = object_info
+                    tracking_frame_mask.mask_name = f"mask_{image_base_name}.npy"
                     tracking_frame_mask.mask_height = out_mask.shape[-2]
                     tracking_frame_mask.mask_width = out_mask.shape[-1]
-                    tracking_frame_mask.mask_name = f"mask_{image_base_name}.npy"
-                    tracking_frame_mask.labels[out_obj_id] = object_info
-                    image_base_name = frame_names[out_frame_idx].split(".")[0]
                 
                 video_segments = {out_frame_idx: tracking_frame_mask}
                 CommonUtils.merge_mask_and_json(video_segments, self.mask_data_dir, self.json_data_dir)

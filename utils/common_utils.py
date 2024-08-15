@@ -164,7 +164,7 @@ class CommonUtils:
         return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def setup_environment(device="cuda"):
-        torch.autocast(device_type="cuda", dtype=torch.bfloat16).__enter__()
+        torch.autocast(device_type="cuda").__enter__()
         if torch.cuda.get_device_properties(0).major >= 8:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
