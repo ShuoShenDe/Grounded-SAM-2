@@ -290,6 +290,12 @@ python grounded_sam2_image_demo_florence2.py \
     --text_input "The left red car."
 ```
 
+**Pretraining for LD**
+```python
+python grounded_local_sam2_tracking_demo_with_continuous_id.py
+```
+`video_dir`,`text_prompt`,`box_threshold`,`text_threshold` Could be changed.
+
 
 ### Citation
 
