@@ -43,6 +43,7 @@ class SAM2VideoPredictor(SAM2Base):
         offload_video_to_cpu=False,
         offload_state_to_cpu=False,
         async_loading_frames=False,
+        device="cuda",
     ):
         """Initialize a inference state."""
         images, video_height, video_width = load_video_frames(
@@ -101,7 +102,7 @@ class SAM2VideoPredictor(SAM2Base):
         inference_state["tracking_has_started"] = False
         inference_state["frames_already_tracked"] = {}
         # Warm up the visual backbone and cache the image feature on frame 0
-        self._get_image_feature(inference_state, frame_idx=0, batch_size=1)
+        self._get_image_feature(inference_state, frame_idx=0, batch_size=1, device=device)
         return inference_state
 
     @classmethod
@@ -785,7 +786,7 @@ class SAM2VideoPredictor(SAM2Base):
         inference_state["tracking_has_started"] = False
         inference_state["frames_already_tracked"].clear()
 
-    def _get_image_feature(self, inference_state, frame_idx, batch_size):
+    def _get_image_feature(self, inference_state, frame_idx, batch_size, device="cuda:0"):
         """Compute the image features on a given frame."""
         # Look up in the cache first
         image, backbone_out = inference_state["cached_features"].get(
@@ -793,7 +794,7 @@ class SAM2VideoPredictor(SAM2Base):
         )
         if backbone_out is None:
             # Cache miss -- we will run inference on a single image
-            image = inference_state["images"][frame_idx].cuda().float().unsqueeze(0)
+            image = inference_state["images"][frame_idx].to(device).float().unsqueeze(0)
             backbone_out = self.forward_image(image)
             # Cache the most recent frame's feature (for repeated interactions with
             # a frame; we can use an LRU cache for more frames in the future).

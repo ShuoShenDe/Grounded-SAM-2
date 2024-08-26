@@ -1,21 +1,21 @@
 import os
 import json
+import shutil
 import cv2
 import numpy as np
-from dataclasses import dataclass
 import supervision as sv
 import random
 import torch
-from PIL import Image
 from tqdm import tqdm
 
 # Grounding DINO
-import grounding_dino.groundingdino.datasets.transforms as T
 from grounding_dino.groundingdino.models import build_model
 from grounding_dino.groundingdino.util.slconfig import SLConfig
 from grounding_dino.groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 from utils.config import Config
-# from config import Config
+import scipy.ndimage as ndimage
+
+from utils.mask_dictionary_model import MaskDictionaryModel
 
 class CommonUtils:
     @staticmethod
@@ -26,77 +26,15 @@ class CommonUtils:
         :param path: The directory path to check or create.
         """
         try: 
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
-                print(f"Path '{path}' did not exist and has been created.")
-            else:
-                print(f"Path '{path}' already exists.")
+            if os.path.exists(path):
+                shutil.rmtree(path)
+                print(f"Path '{path}' did exist and has been removed.")
+            os.makedirs(path, exist_ok=True)
+            # print(f"Path '{path}' did not exist and has been created.")
         except Exception as e:
             print(f"An error occurred while creating the path: {e}")
 
-    @staticmethod
-    def get_grounding_output(model, image, caption, box_threshold, text_threshold=None, with_logits=True, cpu_only=False, token_spans=None, device="cuda"):
-        assert text_threshold is not None or token_spans is not None, "text_threshould and token_spans should not be None at the same time!"
-        caption = caption.lower()
-        caption = caption.strip()
-        if not caption.endswith("."):
-            caption = caption + "."
-        model = model.to(device)
-        image = image.to(device)
-        with torch.no_grad():
-            outputs = model(image[None], captions=[caption])
-        logits = outputs["pred_logits"].sigmoid()[0]  # (nq, 256)
-        boxes = outputs["pred_boxes"][0]  # (nq, 4)
 
-        # filter output
-        if token_spans is None:
-            logits_filt = logits.cpu().clone()
-            boxes_filt = boxes.cpu().clone()
-            filt_mask = logits_filt.max(dim=1)[0] > box_threshold
-            logits_filt = logits_filt[filt_mask]  # num_filt, 256
-            boxes_filt = boxes_filt[filt_mask]  # num_filt, 4
-
-            # get phrase
-            tokenlizer = model.tokenizer
-            tokenized = tokenlizer(caption)
-            # build pred
-            pred_phrases = []
-            for logit, box in zip(logits_filt, boxes_filt):
-                pred_phrase = get_phrases_from_posmap(logit > text_threshold, tokenized, tokenlizer)
-                if with_logits:
-                    pred_phrases.append(pred_phrase + f"({str(logit.max().item())[:4]})")
-                else:
-                    pred_phrases.append(pred_phrase)
-        else:
-            # given-phrase mode
-            positive_maps = create_positive_map_from_span(
-                model.tokenizer(caption),
-                token_span=token_spans
-            ).to(image.device) 
-
-            logits_for_phrases = positive_maps @ logits.T # n_phrase, nq
-            all_logits = []
-            all_phrases = []
-            all_boxes = []
-            for (token_span, logit_phr) in zip(token_spans, logits_for_phrases):
-                # get phrase
-                phrase = ' '.join([caption[_s:_e] for (_s, _e) in token_span])
-                # get mask
-                filt_mask = logit_phr > box_threshold
-                # filt box
-                all_boxes.append(boxes[filt_mask])
-                # filt logits
-                all_logits.append(logit_phr[filt_mask])
-                if with_logits:
-                    logit_phr_num = logit_phr[filt_mask]
-                    all_phrases.extend([phrase + f"({str(logit.item())[:4]})" for logit in logit_phr_num])
-                else:
-                    all_phrases.extend([phrase for _ in range(len(filt_mask))])
-            boxes_filt = torch.cat(all_boxes, dim=0).cpu()
-            pred_phrases = all_phrases
-
-
-        return boxes_filt, pred_phrases
 
 
     @staticmethod
@@ -141,7 +79,7 @@ class CommonUtils:
                 json_data = json.load(file)
                 if "labels" not in json_data:
                     continue
-                for obj_id, obj_item in json_data["labels"].items():
+                for obj_item in json_data["labels"]:
                     # box id
                     instance_id = obj_item["instance_id"]
                     if instance_id not in unique_ids: # not a valid box
@@ -251,20 +189,6 @@ class CommonUtils:
         _ = model.eval()
         return model
 
-    @staticmethod
-    def load_image(image_path):
-        # load image
-        image_pil = Image.open(image_path).convert("RGB")  # load image
-
-        transform = T.Compose(
-            [
-                T.RandomResize([800], max_size=1333),
-                T.ToTensor(),
-                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-            ]
-        )
-        image, _ = transform(image_pil, None)  # 3, h, w
-        return image_pil, image
 
     @staticmethod
     def remove_nested_box(boxes, labels):
@@ -328,26 +252,50 @@ class CommonUtils:
         filtered_labels = [labels[i] for i in keep_indices]
         # print(f"Removed {len(remove_list)} redundant boxes.")
 
-        return filtered_boxes, filtered_labels    
+        return filtered_boxes, filtered_labels
+    
 
-if __name__ == "__main__":
-    # Test the CommonUtils class
-    input_file = '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_1/sms_front_shorter/json_data/mask_1718266721139816000.json'
+    def remove_discrete_areas(mask):
+        # Label the connected components using 4-connectivity
+        labeled_mask, num_features = ndimage.label(mask)
+        # print(f"Number of features: {num_features}")
+        # Measure the size of each component
+        component_sizes = ndimage.sum(mask, labeled_mask, range(1, num_features + 1))
+        # print(f"Component sizes: {component_sizes}")
+        # Create a mask to keep large components
+        large_components_mask = np.zeros_like(mask)
+        for i, size in enumerate(component_sizes, start=1):
+            if size >= Config.decrete_areas_min_size:
+                large_components_mask[labeled_mask == i] = mask[labeled_mask == i]
+            # else:
+            #     print(f"Removing small component with size {size}")
 
-    with open(input_file, 'r') as file:
-        data = json.load(file)
-        labels = data.get('labels', {})
-        for key1, label in enumerate(labels.values()):
-            instance_id = label['instance_id']
-            class_name = label['class_name']
-            box1 = [label['x1'], label['y1'], label['x2'], label['y2']]
-            for key2, label in enumerate(labels.values()):
-                if key1 == key2:
-                    continue
-                instance_id2 = label['instance_id']
-                class_name2 = label['class_name']
-                box2 = [label['x1'], label['y1'], label['x2'], label['y2']]
-                if CommonUtils.is_nested(box1, box2):
-                    print(f"Box {instance_id} is nested inside box {instance_id2}.")
-                else:
-                    print(f"Box {instance_id} is not nested inside box {instance_id2}.")
+        # Optionally re-label the mask
+        labeled_mask, num_features = ndimage.label(large_components_mask)
+        # print(f"Number of features after removing small components: {num_features}")
+        
+        return large_components_mask, component_sizes
+    
+
+    def get_mask_and_json(mask_data_dir, json_data_dir, image_base_name):
+        mask_data_path = os.path.join(mask_data_dir, f"mask_{image_base_name}.npy")
+        mask_array = np.load(mask_data_path)
+        json_data_path = os.path.join(json_data_dir, f"mask_{image_base_name}.json")
+        json_data = MaskDictionaryModel().from_json(json_data_path)
+        return mask_data_path, mask_array, json_data_path, json_data
+
+    def get_image_base_name(image_name):
+        base_name = image_name.split(".")[0].replace("mask_", "")
+        # print(base_name)
+        return base_name
+    
+    def get_frames_first_objs(first_appearance):
+        frame_object_count = {}
+        for obj_id, frame_id in first_appearance.items():
+            if frame_id not in frame_object_count:
+                frame_object_count[frame_id] = []
+            frame_object_count[frame_id].append(obj_id)
+        frame_object_count.pop(0)
+        return frame_object_count
+    
+

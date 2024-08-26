@@ -10,7 +10,7 @@ from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from utils.track_utils import sample_points_from_masks
 from utils.video_utils import create_video_from_images
 from utils.common_utils import CommonUtils
-from utils.mask_dictionary_model import MaskDictionatyModel, ObjectInfo
+from utils.mask_dictionary_model import MaskDictionaryModel, ObjectInfo
 import json
 import copy
 
@@ -62,15 +62,15 @@ CommonUtils.creat_dirs(json_data_dir)
 # scan all the JPEG frame names in this directory
 frame_names = [
     p for p in os.listdir(video_dir)
-    if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+    if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG", ".png", ".PNG"]
 ]
 frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
 
 # init video predictor state
-inference_state = video_predictor.init_state(video_path=video_dir)
-step = 10 # the step to sample frames for Grounding DINO predictor
+inference_state = video_predictor.init_state(video_path=video_dir, offload_video_to_cpu=True, async_loading_frames=True)
+step = 20 # the step to sample frames for Grounding DINO predictor
 
-sam2_masks = MaskDictionatyModel()
+sam2_masks = MaskDictionaryModel()
 PROMPT_TYPE_FOR_VIDEO = "mask" # box, mask or point
 objects_count = 0
 
@@ -85,7 +85,7 @@ for start_frame_idx in range(0, len(frame_names), step):
     img_path = os.path.join(video_dir, frame_names[start_frame_idx])
     image = Image.open(img_path)
     image_base_name = frame_names[start_frame_idx].split(".")[0]
-    mask_dict = MaskDictionatyModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
+    mask_dict = MaskDictionaryModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy")
 
     # run Grounding DINO on the image
     inputs = processor(images=image, text=text, return_tensors="pt").to(device)
@@ -155,7 +155,7 @@ for start_frame_idx in range(0, len(frame_names), step):
     
     video_segments = {}  # output the following {step} frames tracking masks
     for out_frame_idx, out_obj_ids, out_mask_logits in video_predictor.propagate_in_video(inference_state, max_frame_num_to_track=step, start_frame_idx=start_frame_idx):
-        frame_masks = MaskDictionatyModel()
+        frame_masks = MaskDictionaryModel()
         
         for i, out_obj_id in enumerate(out_obj_ids):
             out_mask = (out_mask_logits[i] > 0.0) # .cpu().numpy()
@@ -182,11 +182,9 @@ for start_frame_idx in range(0, len(frame_names), step):
 
         mask_img = mask_img.numpy().astype(np.uint16)
         np.save(os.path.join(mask_data_dir, frame_masks_info.mask_name), mask_img)
-
-        json_data = frame_masks_info.to_dict()
         json_data_path = os.path.join(json_data_dir, frame_masks_info.mask_name.replace(".npy", ".json"))
-        with open(json_data_path, "w") as f:
-            json.dump(json_data, f)
+        json_data = frame_masks_info.to_json(json_data_path)
+        
 
 
 """
@@ -194,4 +192,4 @@ Step 6: Draw the results and save the video
 """
 CommonUtils.draw_masks_and_box_with_supervision(video_dir, mask_data_dir, json_data_dir, result_dir)
 
-create_video_from_images(result_dir, output_video_path, frame_rate=30)
+create_video_from_images(result_dir, output_video_path, frame_rate=15)

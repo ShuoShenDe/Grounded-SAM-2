@@ -3,14 +3,11 @@ import json
 import torch
 import copy
 import os
-import cv2
 from dataclasses import dataclass, field
-from PIL import Image
 from utils.config import Config
-from utils.common_utils import CommonUtils
 
 @dataclass
-class MaskDictionatyModel:
+class MaskDictionaryModel:
     mask_name:str = ""
     mask_height: int = 1080
     mask_width:int = 1920
@@ -21,11 +18,9 @@ class MaskDictionatyModel:
         mask_img = torch.zeros(mask_list.shape[-2:])
         anno_2d = {}
         removed_ids = self.filter_overlay_masks_ids(mask_list)
-        print("filtered_label_list", label_list)
         filtered_mask_list = [mask_list[i] for i in range(len(mask_list)) if i not in removed_ids]
         filtered_box_list = [box_list[i] for i in range(len(box_list)) if i not in removed_ids]
         filtered_label_list = [label_list[i] for i in range(len(label_list)) if i not in removed_ids]
-        print("filtered_label_list", filtered_label_list)
         for idx, (mask, box, label) in enumerate(zip(filtered_mask_list, filtered_box_list, filtered_label_list)):
             final_index = background_value + idx + 1
 
@@ -77,12 +72,12 @@ class MaskDictionatyModel:
                 # removed_keys.append(seg_id)
                 continue
             for track_obj_id, track_object in tracking_annotation_dict.labels.items():  # grounded_sam masks
-                iou, smaller_mask = self.calculate_mask_overlay(track_object.mask, seg_info.mask)  # tensor, numpy
+                iou, smaller_mask = self.calculate_mask_overlay(track_object.mask.cpu().numpy(), seg_info.mask)  # tensor, numpy
                 # print("iou", iou)
                 if iou > Config.mask_overlay_threshold:
                     flag = track_object.instance_id
                     new_object_copy.instance_id = track_object.instance_id
-                    new_object_copy.mask = seg_info.mask
+                    new_object_copy.mask = smaller_mask # seg_info.mask
                     updated_masks[track_obj_id] = new_object_copy
                     break
                 
@@ -100,7 +95,9 @@ class MaskDictionatyModel:
     def get_target_class_name_and_logit(self, instance_id):
         return self.labels[instance_id].class_name, self.labels[instance_id].logit
 
-
+    def get_target_logit(self, instance_id):
+        return self.labels[instance_id].logit
+    
     @staticmethod
     def calculate_iou(mask1, mask2):
         # Convert masks to float tensors for calculations
@@ -118,7 +115,7 @@ class MaskDictionatyModel:
     @staticmethod
     def calculate_mask_overlay(mask1, mask2):
         # Convert masks to float tensors for calculations
-        mask1 = mask1 #.to(torch.float32)
+        mask1 = mask1 # .to(torch.float32)
         mask2 = mask2 # .to(torch.float32)
         
         # Calculate intersection and areas
@@ -136,16 +133,6 @@ class MaskDictionatyModel:
         intersection_ratio = intersection / min_area
         
         return intersection_ratio, smaller_mask
-
-
-    def to_dict(self):
-        return {
-            "mask_name": self.mask_name,
-            "mask_height": self.mask_height,
-            "mask_width": self.mask_width,
-            "promote_type": self.promote_type,
-            "labels": [ value.to_dict() for value in self.labels.values()] # {k: v.to_dict() for k, v in self.labels.items()}
-        }
 
     def clean_zero_mask(self, area_threshold=Config.mask_smallest_threshold):
         removed_keys = []
@@ -179,6 +166,33 @@ class MaskDictionatyModel:
             with open(json_data_path, "w") as f:
                 json.dump(json_data, f)
             del mask_img, json_data
+    
+    def to_json(self, json_file, save_labels_as_list=False):
+        json_data = {
+            "mask_name": self.mask_name,
+            "mask_height": self.mask_height,
+            "mask_width": self.mask_width,
+            "promote_type": self.promote_type,
+            "labels": {k: v.to_dict() for k, v in self.labels.items()}
+        }
+        if save_labels_as_list:
+            json_data["labels"] = [value.to_dict() for value in self.labels.values()]
+
+        with open(json_file, "w") as f:
+            json.dump(json_data, f, indent=4)
+            
+    def from_json(self, json_file):
+        with open(json_file, "r") as f:
+            data = json.load(f)
+            self.mask_name = data["mask_name"]
+            self.mask_height = data["mask_height"]
+            self.mask_width = data["mask_width"]
+            self.promote_type = data["promote_type"]
+            if type(data["labels"]) == list:
+                self.labels = {int(v["instance_id"]): ObjectInfo(**v) for v in data["labels"]}
+            else: 
+                self.labels = {int(k): ObjectInfo(**v) for k, v in data["labels"].items()}
+        return self
 
 
 @dataclass
@@ -205,7 +219,11 @@ class ObjectInfo:
         # 如果没有非零值，返回一个空的边界框
         if nonzero_indices.size(0) == 0:
             # print("nonzero_indices", nonzero_indices)
-            return []
+            self.x1 = 0
+            self.y1 = 0
+            self.x2 = 0
+            self.y2 = 0
+            return [0,0,0,0]
         
         # 计算最小和最大索引
         y_min, x_min = torch.min(nonzero_indices, dim=0)[0]
@@ -217,7 +235,34 @@ class ObjectInfo:
         self.y1 = bbox[1]
         self.x2 = bbox[2]
         self.y2 = bbox[3]
-    
+
+    def update_box_np(self):
+        # Find all non-zero indices
+        nonzero_indices = np.argwhere(self.mask)
+        
+        # If there are no non-zero indices, return an empty bounding box
+        if nonzero_indices.shape[0] == 0:
+            # print("nonzero_indices", nonzero_indices)
+            self.x1 = 0
+            self.y1 = 0
+            self.x2 = 0
+            self.y2 = 0
+            return [0,0,0,0]
+        
+        # Calculate the minimum and maximum indices
+        y_min, x_min = np.min(nonzero_indices, axis=0)
+        y_max, x_max = np.max(nonzero_indices, axis=0)
+        
+        # Create bounding box [x_min, y_min, x_max, y_max]
+        bbox = [x_min, y_min, x_max, y_max]
+        self.x1 = int(x_min)
+        self.y1 = int(y_min)
+        self.x2 = int(x_max)
+        self.y3 = int(y_max)
+
+        # Return the bounding box for completeness
+        return bbox
+
     def to_dict(self):
         return {
             "instance_id": self.instance_id,
