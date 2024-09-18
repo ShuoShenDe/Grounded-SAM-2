@@ -150,22 +150,14 @@ class MaskDictionaryModel:
                 mask_name = "mask_"+image_base_name
                 np.save(os.path.join(mask_data_dir, mask_name), mask_img.numpy().astype(np.uint16))
 
-                json_data = self.to_dict()
                 json_data_path = os.path.join(json_data_dir, mask_name.replace(".npy", ".json"))
                 print("save_empty_mask_and_json", json_data_path)
-                with open(json_data_path, "w") as f:
-                    json.dump(json_data, f)
-                del mask_img, json_data
+                self.to_json(json_data_path)
         else:
-            mask_img = torch.zeros((self.mask_height, self.mask_width))
             np.save(os.path.join(mask_data_dir, self.mask_name), mask_img.numpy().astype(np.uint16))
-
-            json_data = self.to_dict()
             json_data_path = os.path.join(json_data_dir, self.mask_name.replace(".npy", ".json"))
             print("save_empty_mask_and_json", json_data_path)
-            with open(json_data_path, "w") as f:
-                json.dump(json_data, f)
-            del mask_img, json_data
+            self.to_json(json_data_path)
     
     def to_json(self, json_file, save_labels_as_list=False):
         json_data = {

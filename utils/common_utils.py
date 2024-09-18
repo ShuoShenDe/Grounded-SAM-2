@@ -7,6 +7,7 @@ import supervision as sv
 import random
 import torch
 from tqdm import tqdm
+import  glob
 
 # Grounding DINO
 from grounding_dino.groundingdino.models import build_model
@@ -278,10 +279,14 @@ class CommonUtils:
     
 
     def get_mask_and_json(mask_data_dir, json_data_dir, image_base_name):
-        mask_data_path = os.path.join(mask_data_dir, f"mask_{image_base_name}.npy")
+        mask_data_path = os.path.join(mask_data_dir, f"mask_{image_base_name}*")
+        print(mask_data_path)
+        mask_data_path = glob.glob(mask_data_path)[0]
         mask_array = np.load(mask_data_path)
-        json_data_path = os.path.join(json_data_dir, f"mask_{image_base_name}.json")
+        json_data_path = os.path.join(json_data_dir, f"mask_{image_base_name}*")
+        json_data_path = glob.glob(json_data_path)[0]
         json_data = MaskDictionaryModel().from_json(json_data_path)
+        
         return mask_data_path, mask_array, json_data_path, json_data
 
     def get_image_base_name(image_name):

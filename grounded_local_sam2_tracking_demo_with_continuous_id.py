@@ -3,6 +3,7 @@ import time
 import torch
 import numpy as np
 from post_process import PostProcess
+from refine_model_run import refined_model_main
 from utils.config import Config
 from sam2.build_sam import build_sam2_video_predictor, build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -28,8 +29,11 @@ if torch.cuda.get_device_properties(0).major >= 8:
     torch.backends.cudnn.allow_tf32 = True
 
 # init sam image predictor and video predictor model
-grounded_checkpoint = "gdino_checkpoints/groundingdino_swinb_cogcoor.pth" 
-grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinB_cfg.py" 
+# grounded_checkpoint = "gdino_checkpoints/groundingdino_swinb_cogcoor.pth" 
+# grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinB_cfg.py" 
+grounded_checkpoint = "gdino_checkpoints/groundingdino_swint_ogc.pth"
+grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+
 sam2_checkpoint = "./checkpoints/sam2_hiera_large.pt"
 model_cfg = "sam2_hiera_l.yaml"
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -38,23 +42,24 @@ print("device", device)
 
 
 grounding_dino_model = GroundingSAM2Model(grounding_model_config, grounded_checkpoint, sam2_model_cfg=model_cfg, sam2_checkpoint=sam2_checkpoint, device=device)
-video_predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device = device)
+video_predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device = device)  # will brocken when objects equal 92, 87 is ok
 
 
 # setup the input image and text prompt for SAM 2 and Grounding DINO
 # VERY important: text queries need to be lowercased + end with a dot
-box_threshold=0.25
-text_threshold=0.20
-text_prompt = "car. van. truck. person. motorcycle. bicycle. pole. balusters. bannister. rail."
+box_threshold = 0.2  #0.25
+text_threshold = 0.2
+print("box_threshold", box_threshold, "text_threshold", text_threshold)
+text_prompt = "car. van. truck. person. motorcycle. pole. bicycle. balusters. rail. bannister." #  stroller.
 # car. van. bus. truck. person. motorcycle. bicycle. flagpole. pole. balusters. bannister. stile. rail.
-video_dir = "/media/NAS/sd_nas_01/shuo/denso_data/20240613_103919_9/sms_rear/raw_data"
+video_dir = "/media/NAS/sd_nas_01/shuo/denso_data/20240910/20240613_103919_10/sms_right/raw_data"
 # 'output_dir' is the directory to save the annotated frames
 output_dir = os.path.dirname(video_dir)
 print("output_dir", output_dir)
 # 'output_video_path' is the path to save the final video
-output_video_path = os.path.join(output_dir, "output.mp4")
+# output_video_path = os.path.join(output_dir, "output.mp4")
 # create the output directory
-mask_data_dir = os.path.join(output_dir, "mask_data")
+mask_data_dir = os.path.join(output_dir, "mask_data_origin")
 json_data_dir = os.path.join(output_dir, "json_data")
 result_dir = os.path.join(output_dir, "result")
 CommonUtils.creat_dirs(mask_data_dir)
@@ -67,13 +72,16 @@ frame_names = [
 # frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
 frame_names.sort()  
 # init video predictor state
-inference_state = video_predictor.init_state(video_path=video_dir, offload_video_to_cpu=True, async_loading_frames=True, offload_state_to_cpu = True)
+inference_state = video_predictor.init_state(video_path=video_dir, offload_video_to_cpu=True, async_loading_frames=True, offload_state_to_cpu=True)
 step = 20 # the step to sample frames for Grounding DINO predictor
 
 sam2_masks = MaskDictionaryModel()
 PROMPT_TYPE_FOR_VIDEO = "mask" # box, mask or point
 objects_count = 0
 first_appearance = {}
+
+
+
 """
 Step 2: Prompt Grounding DINO and SAM image predictor to get the box and mask for all frames
 """
@@ -185,8 +193,9 @@ for frame_idx, current_object_count in frame_object_count.items():
         mask_data_path, mask_array, json_data_path, json_data = CommonUtils.get_mask_and_json(mask_data_dir, json_data_dir, image_base_name)
         for object_id in frame_object_count[frame_idx]:
             print("reverse tracking object", object_id)
-            object_info_dict[object_id] = json_data.labels[object_id]
-            video_predictor.add_new_mask(inference_state, frame_idx, object_id, mask_array == object_id)
+            if object_id in json_data.labels.keys():
+                object_info_dict[object_id] = json_data.labels[object_id]
+                video_predictor.add_new_mask(inference_state, frame_idx, object_id, mask_array == object_id)
     start_object_id = current_object_count
         
     
@@ -217,10 +226,13 @@ for frame_idx, current_object_count in frame_object_count.items():
 
 
 # create_video_from_images(result_dir, output_video_path, frame_rate=30)
-
 # 592
 print("Total time:", time.time() - start_time)
 
 PostProcess.remove_area(mask_data_dir, json_data_dir, frame_names)
 PostProcess.unified_classes(json_data_dir)
 CommonUtils.draw_masks_and_box_with_supervision(video_dir, mask_data_dir, json_data_dir, result_dir)
+del grounding_dino_model, video_predictor
+
+
+# refined_model_main(video_dir)
