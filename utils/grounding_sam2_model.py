@@ -9,6 +9,7 @@ import grounding_dino.groundingdino.datasets.transforms as T
 from PIL import Image
 
 from utils.common_utils import CommonUtils 
+import torch
 
 
 
@@ -70,7 +71,76 @@ class GroundingSAM2Model:
 
         return masks, input_boxes, OBJECTS
 
+
+    def forward_with_loop(self, img_path, text_prompts, thresholds):
+        # image = Image.open(img_path)
+        image, image_transformed = self.load_image(img_path)
+        size = image.size
+        H, W = size[1], size[0]
+        final_masks = np.empty((0, H, W))
+        final_boxes = torch.tensor([])
+        final_pred_phrases = []
+        for text_prompt, threshold in zip(text_prompts, thresholds):
+            
+            boxes_filt, pred_phrases = self.get_grounding_output(
+                    image_transformed, text_prompt, threshold, text_threshold=threshold#  token_spans=token_spans
+                )
+
+	    
+            for i in range(boxes_filt.size(0)):
+                boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
+                boxes_filt[i][:2] -= boxes_filt[i][2:] / 2
+                boxes_filt[i][2:] += boxes_filt[i][:2]
+            boxes_filt, pred_phrases = CommonUtils.remove_redundant_box(boxes_filt, pred_phrases)
+            print("text_prompt", text_prompt, "threshold", threshold, boxes_filt.shape)
+            # boxes_filt, pred_phrases = CommonUtils.remove_nested_box(boxes_filt, pred_phrases)
+            # prompt SAM image predictor to get the mask for the object
+            self.image_predictor.set_image(np.array(image.convert("RGB")))
+
+            # process the detection results
+            input_boxes = boxes_filt # results[0]["boxes"] # .cpu().numpy()
+            # print("results[0]",results[0])
+            OBJECTS = pred_phrases
+            # print("input_boxes type,", type(input_boxes), "input_boxes shape", input_boxes.shape)
+            # print("OBJECTS shape,", OBJECTS)
+            
+
+            if input_boxes.shape[0] != 0:
+                
+                # mask_dict.save_empty_mask_and_json(mask_data_dir, json_data_dir)
+                
+                # prompt SAM 2 image predictor to get the mask for the object
+                masks, scores, logits = self.image_predictor.predict(
+                    point_coords=None,
+                    point_labels=None,
+                    box=input_boxes,
+                    multimask_output=False,
+                )
+                
+                # convert the mask shape to (n, H, W)
+                if masks.ndim == 2:
+                    masks = masks[None]
+                    scores = scores[None]
+                    logits = logits[None]
+                elif masks.ndim == 4:
+                    masks = masks.squeeze(1)
+                    scores = scores.squeeze(1)
+                    logits = logits.squeeze(1)
+
+                # print("masks type", type(masks), "masks shape", masks.shape)
+
+            else:
+                masks = torch.zeros(0, H, W)
+                scores = torch.zeros(0)
+                logits = torch.zeros(0)
+                
+            final_masks = np.concatenate([final_masks, masks], axis=0)
+            final_boxes = torch.cat([final_boxes, input_boxes])
+            final_pred_phrases.extend(OBJECTS)
+        print("final_pred_phrases", len(final_pred_phrases),final_pred_phrases)
+        return final_masks, final_boxes, final_pred_phrases
     
+        
     def get_grounding_output(self, image, caption, box_threshold, text_threshold=None, with_logits=True, cpu_only=False, token_spans=None):
         assert text_threshold is not None or token_spans is not None, "text_threshould and token_spans should not be None at the same time!"
         caption = caption.lower()

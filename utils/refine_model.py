@@ -76,9 +76,12 @@ def get_majority_class(mask):
     return int(unique[max_index]), counts[max_index]
 
 def paste_tile_to_full_image(full_size_mask, mask_tile, left, upper):
+    print("full_size_mask", full_size_mask.shape, "mask_tile", mask_tile.shape)
+    
     full_size_mask = full_size_mask.astype(np.uint8)
     mask_tile = mask_tile.astype(np.uint8)
-
+    if len(mask_tile.shape) == 0:
+        return full_size_mask
     full_size_mask = Image.fromarray(full_size_mask)
     mask_tile = Image.fromarray(mask_tile)
     

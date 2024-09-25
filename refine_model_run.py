@@ -64,7 +64,15 @@ def transfer_missing_objects(old_mask, new_mask):
 
     return new_mask
 
-
+def get_the_largest_mask(masks):
+    largest_mask = None
+    largest_area = 0
+    for mask in masks:
+        area = np.sum(mask)
+        if area > largest_area:
+            largest_area = area
+            largest_mask = mask
+    return largest_mask
 
 def refined_model_main(input_dir):
     # start_time = time.time()
@@ -112,7 +120,7 @@ def refined_model_main(input_dir):
     # refined_raw_data_dirs = ['/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_0_0/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_0_1/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_1_0/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_1_1/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_2_0/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_2_1/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_3_0/raw_data', '/media/NAS/sd_nas_01/shuo/denso_data/20240613_101744_6/sms_front/refined_raw_data/refined_data_3_1/raw_data']
     get_image_shape(input_dir)
     image_size = (1080, 1920) #  
-    print("image_size", image_size)
+    # print("image_size", image_size)
     for base_name in base_names:
         merge_mask = np.zeros(image_size)
         json_dict = MaskDictionaryModel().from_json(os.path.join(final_json_dir, f"mask_{base_name}.json"))
@@ -148,13 +156,14 @@ def refined_model_main(input_dir):
                         point_coords=None,
                         point_labels=None,
                         box=relative_position[None, :],
-                        multimask_output=True,
+                        multimask_output=False,
                     )
-                    print(f"obj_id: {obj_id}, mask sum: {masks[0].sum()}")
-                    print("masks", masks[0].shape)
-                    obj_mask = np.where(masks[0] == True, obj_item.instance_id ,0)
-                    print("obj_mask", obj_mask.shape, "obj sum", obj_mask.sum())
-                    print("merge_mask", merge_mask.shape, "merge sum", merge_mask.sum())
+                    # print(f"obj_id: {obj_id}, mask sum: {masks[0].sum()}")
+                    # print("masks", masks.shape)
+                    largest_area_mask = get_the_largest_mask(masks)
+                    obj_mask = np.where(largest_area_mask == True, obj_item.instance_id ,0)
+                    # print("obj_mask", obj_mask.shape, "obj sum", obj_mask.sum())
+                    # print("merge_mask", merge_mask.shape, "merge sum", merge_mask.sum())
                     full_size_mask = np.zeros(image_size)
                     full_size_mask = paste_tile_to_full_image(full_size_mask, obj_mask, left, upper)
                     merge_mask = np.where(full_size_mask > 0, full_size_mask, merge_mask)
@@ -164,7 +173,7 @@ def refined_model_main(input_dir):
         """
 
         merge_mask = transfer_missing_objects(old_mask, merge_mask)
-
+        merge_mask = merge_mask.astype(np.uint16)
         merged_mask_path = os.path.join(final_mask_data_dir, f"mask_{base_name}.npy")
         np.save(merged_mask_path, merge_mask)
         print(f"Save mask to {merged_mask_path}, mask sum is: {merge_mask.sum()}")
@@ -177,6 +186,6 @@ def refined_model_main(input_dir):
             
 
 if __name__ == "__main__":
-    input_dir = "/media/NAS/sd_nas_01/shuo/denso_data/20240910/20240613_103919_10/sms_right//raw_data"
+    input_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240916/20240828_080213_3/sms_front/raw_data"
     refined_model_main(input_dir)
     

@@ -29,10 +29,10 @@ if torch.cuda.get_device_properties(0).major >= 8:
     torch.backends.cudnn.allow_tf32 = True
 
 # init sam image predictor and video predictor model
-grounded_checkpoint = "gdino_checkpoints/groundingdino_swinb_cogcoor.pth" 
-grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinB_cfg.py" 
-# grounded_checkpoint = "gdino_checkpoints/groundingdino_swint_ogc.pth"
-# grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+# grounded_checkpoint = "gdino_checkpoints/groundingdino_swinb_cogcoor.pth" 
+# grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinB_cfg.py" 
+grounded_checkpoint = "gdino_checkpoints/groundingdino_swint_ogc.pth"
+grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinT_OGC.py"
 
 sam2_checkpoint = "./checkpoints/sam2_hiera_large.pt"
 model_cfg = "sam2_hiera_l.yaml"
@@ -47,12 +47,14 @@ video_predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device 
 
 # setup the input image and text prompt for SAM 2 and Grounding DINO
 # VERY important: text queries need to be lowercased + end with a dot
-box_threshold = 0.18  #0.25
-text_threshold = 0.18
+box_threshold = 0.2  #0.25
+text_threshold = 0.2
 print("box_threshold", box_threshold, "text_threshold", text_threshold)
-text_prompt = "car. van. truck. person. motorcycle. pole. bicycle. balusters. rail. " #  stroller. bannister.
+text_prompt = "car . van . truck . person . motorcycle . pole . bicycle . balusters . rail . bannister ." #  stroller.
+text_prompt = [ "rail ." , "person . ", "motorcycle .", "pole .", "bicycle ." ,"car . van .", "truck ." ] # "balusters ." "bannister ."  
+threshold = [ 0.25,  0.26, 0.2, 0.18, 0.18, 0.23, 0.28]  # 
 # car. van. bus. truck. person. motorcycle. bicycle. flagpole. pole. balusters. bannister. stile. rail.
-video_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240916/20240828_080213_3/sms_front/raw_data"
+video_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240910/20240613_103919_10/sms_rear/raw_data"
 # 'output_dir' is the directory to save the annotated frames
 output_dir = os.path.dirname(video_dir)
 print("output_dir", output_dir)
@@ -61,7 +63,7 @@ print("output_dir", output_dir)
 # create the output directory
 mask_data_dir = os.path.join(output_dir, "mask_data_origin")
 json_data_dir = os.path.join(output_dir, "json_data")
-result_dir = os.path.join(output_dir, "result_origin")
+result_dir = os.path.join(output_dir, "result")
 CommonUtils.creat_dirs(mask_data_dir)
 CommonUtils.creat_dirs(json_data_dir)
 # scan all the JPEG frame names in this directory
@@ -96,7 +98,7 @@ for start_frame_idx in range(0, len(frame_names), step):
     H, W = size[1], size[0]
     mask_dict = MaskDictionaryModel(promote_type = PROMPT_TYPE_FOR_VIDEO, mask_name = f"mask_{image_base_name}.npy", mask_height = H, mask_width = W)
 
-    masks, input_boxes, OBJECTS = grounding_dino_model.forward(img_path, text_prompt, box_threshold, text_threshold)
+    masks, input_boxes, OBJECTS = grounding_dino_model.forward_with_loop(img_path, text_prompt, threshold)
     """
         Step 3: Register each object's mask to video predictor
     """
@@ -228,7 +230,6 @@ for frame_idx, current_object_count in frame_object_count.items():
 # create_video_from_images(result_dir, output_video_path, frame_rate=30)
 # 592
 
-
 PostProcess.remove_area(mask_data_dir, json_data_dir, frame_names)
 PostProcess.unified_classes(json_data_dir)
 CommonUtils.draw_masks_and_box_with_supervision(video_dir, mask_data_dir, json_data_dir, result_dir)
@@ -236,10 +237,10 @@ del grounding_dino_model, video_predictor
 
 
 refined_model_main(video_dir)
+"""
+car >0.18
 
+/media/NAS/sd_nas_03/shuo/denso_data/20240916/20240827_165656_2/sms_right/raw_data use multi_grounding_dino
+
+"""
 print("Total time:", time.time() - start_time)
-
-"""
-1467 s 339 frames
-5773 s 750 frames
-"""

@@ -56,18 +56,8 @@ class CommonUtils:
             
             # get each mask from unique mask file
             all_object_masks = []
-            for uid in unique_ids:
-                if uid == 0: # skip background id
-                    continue
-                else:
-                    object_mask = (mask == uid)
-                    all_object_masks.append(object_mask[None])
-            
-            # get n masks: (n, h, w)
-            if len(all_object_masks) == 0:
-                continue
     
-            all_object_masks = np.concatenate(all_object_masks, axis=0)
+            
             
             # load box information
             file_path = os.path.join(json_path, "mask_"+raw_image_name.split(".")[0]+".json")
@@ -90,12 +80,14 @@ class CommonUtils:
                     all_object_boxes.append([x1, y1, x2, y2])
                     # box name
                     class_name = obj_item["class_name"]
-                    
+                    object_mask = (mask == instance_id)
+                    all_object_masks.append(object_mask[None])
                     # build id list and id2name mapping
                     all_object_ids.append(instance_id)
                     all_class_names.append(class_name)
                     object_id_to_name[instance_id] = class_name
-            
+                    
+            all_object_masks = np.concatenate(all_object_masks, axis=0)
             # Adjust object id and boxes to ascending order
             paired_id_and_box = zip(all_object_ids, all_object_boxes)
             sorted_pair = sorted(paired_id_and_box, key=lambda pair: pair[0])
@@ -125,6 +117,7 @@ class CommonUtils:
             output_image_path = os.path.join(output_path, raw_image_name)
             cv2.imwrite(output_image_path, annotated_frame)
             # print(f"Annotated image saved as {output_image_path}")
+
 
     @staticmethod
     def draw_masks_and_box(raw_image_path, mask_path, json_path, output_path):
@@ -280,7 +273,7 @@ class CommonUtils:
 
     def get_mask_and_json(mask_data_dir, json_data_dir, image_base_name):
         mask_data_path = os.path.join(mask_data_dir, f"mask_{image_base_name}*")
-        print(mask_data_path)
+        # print(mask_data_path)
         mask_data_path = glob.glob(mask_data_path)[0]
         mask_array = np.load(mask_data_path)
         json_data_path = os.path.join(json_data_dir, f"mask_{image_base_name}*")
@@ -300,6 +293,7 @@ class CommonUtils:
             if frame_id not in frame_object_count:
                 frame_object_count[frame_id] = []
             frame_object_count[frame_id].append(obj_id)
+        print(frame_object_count)
         frame_object_count.pop(0)
         return frame_object_count
     
