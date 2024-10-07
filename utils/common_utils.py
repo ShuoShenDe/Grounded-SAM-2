@@ -293,8 +293,9 @@ class CommonUtils:
             if frame_id not in frame_object_count:
                 frame_object_count[frame_id] = []
             frame_object_count[frame_id].append(obj_id)
-        print(frame_object_count)
-        frame_object_count.pop(0)
+        print("frame_object_count",frame_object_count)
+        if 0 in frame_object_count:
+            frame_object_count.pop(0)
         return frame_object_count
     
 

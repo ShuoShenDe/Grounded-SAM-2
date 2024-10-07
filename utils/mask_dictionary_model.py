@@ -55,7 +55,7 @@ class MaskDictionaryModel:
                 iou_on_smaller, smaller_mask = self.calculate_mask_overlay(mask_img, mask_img_2)
                 if iou_on_smaller > Config.mask_overlay_threshold:
                     removed_ids.append(mask_id)
-        print("filter_overlay_masks_return_keep_ids", removed_ids)
+        # print("filter_overlay_masks_return_keep_ids", removed_ids)
         return removed_ids
 
 
@@ -69,11 +69,10 @@ class MaskDictionaryModel:
             new_object_copy = copy.deepcopy(seg_info)
             true_count = seg_info.mask.sum().item()
             if true_count < Config.mask_smallest_threshold:
-                # removed_keys.append(seg_id)
+                removed_keys.append(seg_id)
                 continue
             for track_obj_id, track_object in tracking_annotation_dict.labels.items():  # grounded_sam masks
                 iou, smaller_mask = self.calculate_mask_overlay(track_object.mask.cpu().numpy(), seg_info.mask)  # tensor, numpy
-                # print("iou", iou)
                 if iou > Config.mask_overlay_threshold:
                     flag = track_object.instance_id
                     new_object_copy.instance_id = track_object.instance_id
@@ -88,8 +87,8 @@ class MaskDictionaryModel:
                 updated_masks[objects_count] = new_object_copy
 
         updated_masks = {k: v for k, v in updated_masks.items() if k not in removed_keys}
+        print("updated_masks.keys removed:", updated_masks.keys())
         self.labels = updated_masks
-        print("updated_masks.keys()", updated_masks.keys())
         return objects_count
 
     def get_target_class_name_and_logit(self, instance_id):
