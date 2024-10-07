@@ -137,7 +137,7 @@ class GroundingSAM2Model:
             final_masks = np.concatenate([final_masks, masks], axis=0)
             final_boxes = torch.cat([final_boxes, input_boxes])
             final_pred_phrases.extend(OBJECTS)
-        print("final_pred_phrases", len(final_pred_phrases),final_pred_phrases)
+        # print("final_pred_phrases", len(final_pred_phrases),final_pred_phrases)
         return final_masks, final_boxes, final_pred_phrases
     
         

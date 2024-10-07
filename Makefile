@@ -27,11 +27,12 @@ build-image:
 	@echo $(BUILD_MESSAGE)
 	docker build --build-arg USE_CUDA=$(USE_CUDA) \
 	--build-arg TORCH_ARCH=$(TORCH_CUDA_ARCH_LIST) \
-	-t grounded_sam2:1.0 .
+	-t grounded_sam2:2.0 .
 run:
 	docker run --gpus all -it --rm --net=host --privileged \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
 	-v "${PWD}":/home/appuser/Grounded-SAM-2 \
-	-e DISPLAY=$DISPLAY \
-	--name=gsa \
-	--ipc=host -it grounded_sam2:1.0
+	-v /data:/data \
+	--name=grounded_sam2 \
+	--ipc=host -it grounded_sam2:2.0
+	-i /data/20240923/20240828_075313_1/sms_front/raw_data

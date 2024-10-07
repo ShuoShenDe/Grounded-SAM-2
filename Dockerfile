@@ -27,10 +27,14 @@ WORKDIR /home/appuser/Grounded-SAM-2
 
 
 # Install essential Python packages
-RUN python -m pip install --upgrade pip setuptools wheel numpy
+RUN python -m pip install --upgrade pip setuptools wheel numpy torch torchvision torchaudio
 
 # Install segment_anything package in editable mode
 RUN python -m pip install -e .
 
 # Install grounding dino 
 RUN python -m pip install --no-build-isolation -e grounding_dino
+
+ENTRYPOINT ["python", "multi_grounded_local_sam2_tracking_demo_with_continuous_id.py"]
+CMD ["-i", "/data/raw_data"]
+
