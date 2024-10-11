@@ -12,6 +12,7 @@ from utils.mask_dictionary_model import MaskDictionaryModel, ObjectInfo
 from utils.refine_model import split_image_to_folders, paste_tile_to_full_image, clip_images
 import gc
 from PIL import Image
+from tqdm import tqdm
 
 import json
 import copy
@@ -89,8 +90,8 @@ def refined_model_main(input_dir):
 
     # init sam image predictor and video predictor model
 
-    sam2_checkpoint = "./checkpoints/sam2_hiera_large.pt"
-    model_cfg = "sam2_hiera_l.yaml"
+    sam2_checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
+    model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # device = "cuda:1"
     print("device", device)
@@ -127,7 +128,7 @@ def refined_model_main(input_dir):
         old_mask_path = os.path.join(mask_data, f"mask_{base_name}.npy")
         old_mask = np.load(old_mask_path)
         old_unique = np.unique(old_mask)
-        for refined_raw_data_dir in refined_raw_data_dirs:
+        for refined_raw_data_dir in tqdm(refined_raw_data_dirs):
             output_dir = os.path.dirname(refined_raw_data_dir)
             image_path = glob.glob(os.path.join(refined_raw_data_dir, f"*{base_name}*"))[0]
             image = Image.open(image_path)
@@ -176,7 +177,7 @@ def refined_model_main(input_dir):
         merge_mask = merge_mask.astype(np.uint16)
         merged_mask_path = os.path.join(final_mask_data_dir, f"mask_{base_name}.npy")
         np.save(merged_mask_path, merge_mask)
-        print(f"Save mask to {merged_mask_path}, mask sum is: {merge_mask.sum()}")
+        # print(f"Save mask to {merged_mask_path}, mask sum is: {merge_mask.sum()}")
 
 
 
@@ -186,6 +187,6 @@ def refined_model_main(input_dir):
             
 
 if __name__ == "__main__":
-    input_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240916/20240828_080213_3/sms_front/raw_data"
+    input_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240930/20240828_080916_3/sms_right/raw_data"
     refined_model_main(input_dir)
     

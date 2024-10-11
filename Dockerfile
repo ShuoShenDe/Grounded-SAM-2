@@ -34,6 +34,7 @@ RUN python -m pip install -e .
 
 # Install grounding dino 
 RUN python -m pip install --no-build-isolation -e grounding_dino
+ENV PYTHONPATH="${PYTHONPATH}:/home/appuser/Grounded-SAM-2/sam2"
 
 ENTRYPOINT ["python", "multi_grounded_local_sam2_tracking_demo_with_continuous_id.py"]
 CMD ["-i", "/data/raw_data"]

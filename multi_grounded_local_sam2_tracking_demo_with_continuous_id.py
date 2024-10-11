@@ -40,8 +40,8 @@ def main(video_dir):
     grounded_checkpoint = "gdino_checkpoints/groundingdino_swint_ogc.pth"
     grounding_model_config = "grounding_dino/groundingdino/config/GroundingDINO_SwinT_OGC.py"
 
-    sam2_checkpoint = "./checkpoints/sam2_hiera_large.pt"
-    model_cfg = "sam2_hiera_l.yaml"
+    sam2_checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
+    model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # device = "cuda:1"
     print("device", device)

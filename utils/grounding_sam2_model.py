@@ -18,6 +18,7 @@ class GroundingSAM2Model:
         self.grounding_model = CommonUtils.load_model(grounding_model_config, grounded_checkpoint, device=device)
         self.device = device
         self.grounding_model.to(device)
+        print("sam2_model_cfg, sam2_checkpoint:",sam2_model_cfg, sam2_checkpoint)
         self.sam2_image_model = build_sam2(sam2_model_cfg, sam2_checkpoint, device=self.device)
         self.image_predictor = SAM2ImagePredictor(self.sam2_image_model)
         
