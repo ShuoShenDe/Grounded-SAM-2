@@ -46,7 +46,6 @@ def main(video_dir):
     # device = "cuda:1"
     print("device", device)
 
-
     grounding_dino_model = GroundingSAM2Model(grounding_model_config, grounded_checkpoint, sam2_model_cfg=model_cfg, sam2_checkpoint=sam2_checkpoint, device=device)
     video_predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device = device)  # will brocken when objects equal 92, 87 is ok
 
@@ -58,7 +57,7 @@ def main(video_dir):
     print("box_threshold", box_threshold, "text_threshold", text_threshold)
     text_prompt = "car . van . truck . person . motorcycle . pole . bicycle . balusters . rail . bannister ." #  stroller.
     text_prompt = [ "rail ." , "person . ", "motorcycle .", "pole .", "bicycle ." ,"car . van .", "truck ." ] # "balusters ." "bannister ."  
-    threshold = [ 0.25,  0.26, 0.2, 0.18, 0.25, 0.23, 0.30]  # 
+    threshold = [ 0.25,  0.26, 0.2, 0.18, 0.25, 0.23, 0.35]
     # car. van. bus. truck. person. motorcycle. bicycle. flagpole. pole. balusters. bannister. stile. rail.
     # video_dir = "/media/NAS/sd_nas_03/shuo/denso_data/20240910/20240613_103919_10/sms_rear/raw_data"
     # 'output_dir' is the directory to save the annotated frames

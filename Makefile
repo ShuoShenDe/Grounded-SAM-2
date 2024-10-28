@@ -31,9 +31,13 @@ build-image:
 run:
 	docker run --gpus all -it --rm --net=host --privileged \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
-	-v /data:/data \
+	-v /media/NAS/sd_nas_03/shuo/denso_data/:/media/NAS/sd_nas_03/shuo/denso_data/ \
 	--name=grounded_sam2 \
 	--ipc=host -it susanshende/denso_prelabling:2.0
-	-i /data/20240923/20240828_075313_1/sms_front/raw_data
+	-i /media/NAS/sd_nas_03/shuo/denso_data/20241007/20240827_161112_1/sms_front/raw_data
 
 # -v "${PWD}":/home/appuser/Grounded-SAM-2 \
+
+
+
+# docker run --gpus all -it --rm --net=host --privileged -v /tmp/.X11-unix:/tmp/.X11-unix -v /data/airflow_appdata_tmp/DN_PRELABEL_DN_3_20241015_15_52_05_scheduled_2022_01_01T00_00_00_denso_prelabeling_denso_prelabeling_sms_front:/data/airflow_appdata_tmp/DN_PRELABEL_DN_3_20241015_15_52_05_scheduled_2022_01_01T00_00_00_denso_prelabeling_denso_prelabeling_sms_front --name=denso_prelabling --ipc=host -it susanshende/denso_prelabling:2.0 -i /data/airflow_appdata_tmp/DN_PRELABEL_DN_3_20241015_15_52_05_scheduled_2022_01_01T00_00_00_denso_prelabeling_denso_prelabeling_sms_front/sms_front/raw_data

@@ -24,17 +24,21 @@ RUN mkdir -p /home/appuser/Grounded-SAM-2
 COPY . /home/appuser/Grounded-SAM-2/
 
 WORKDIR /home/appuser/Grounded-SAM-2
-
+ENV PYTHONPATH="${PYTHONPATH}:/home/appuser/Grounded-SAM-2/sam2"
 
 # Install essential Python packages
-RUN python -m pip install --upgrade pip setuptools wheel numpy torch torchvision torchaudio
+
+RUN python -m pip install --upgrade pip setuptools wheel supervision 
+RUN python -m pip install --no-cache-dir -r grounding_dino/requirements.txt
+
+RUN python -m pip install torch==2.3.1+cu121 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
 
 # Install segment_anything package in editable mode
 RUN python -m pip install -e .
 
 # Install grounding dino 
 RUN python -m pip install --no-build-isolation -e grounding_dino
-ENV PYTHONPATH="${PYTHONPATH}:/home/appuser/Grounded-SAM-2/sam2"
 
 ENTRYPOINT ["python", "multi_grounded_local_sam2_tracking_demo_with_continuous_id.py"]
 CMD ["-i", "/data/raw_data"]
